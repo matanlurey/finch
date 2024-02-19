@@ -45,7 +45,7 @@ final class PullRequestStatus {
   @override
   String toString() {
     return [
-      '$number | $title',
+      '#$number | $title',
       reviews.toString(),
       checks.toString(),
     ].join('\n');
@@ -182,10 +182,14 @@ final class ChecksPending extends PullRequestCheckStatus {
   /// How long the pull request has been waiting for checks to complete.
   final Duration waiting;
 
+  /// Whether skia gold checks are pending.
+  final bool skiaGoldPending;
+
   const ChecksPending({
     required this.succeeded,
     required this.total,
     required this.waiting,
+    required this.skiaGoldPending,
   });
 
   @override
@@ -193,17 +197,18 @@ final class ChecksPending extends PullRequestCheckStatus {
     return other is ChecksPending &&
         other.succeeded == succeeded &&
         other.total == total &&
-        other.waiting == waiting;
+        other.waiting == waiting &&
+        other.skiaGoldPending == skiaGoldPending;
   }
 
   @override
   int get hashCode {
-    return Object.hash(succeeded, total, waiting);
+    return Object.hash(succeeded, total, waiting, skiaGoldPending);
   }
 
   @override
   String toString() {
-    return '🟡 waiting for $succeeded/$total checks (${waiting.toHumanReadable()})';
+    return '🟡 waiting for ${total - succeeded}/$total checks ${skiaGoldPending ? '(including skia gold)' : ''} (${waiting.toHumanReadable()})';
   }
 }
 

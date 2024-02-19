@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:args/command_runner.dart';
+import 'package:collection/collection.dart';
 import 'package:finch/src/github/rest_client.dart';
 import 'package:finch/src/output.dart';
 import 'package:meta/meta.dart';
@@ -42,6 +42,42 @@ final class FinchCommandRunner extends CommandRunner<void> {
 
   FinchCommandRunner(this._github) : super(_name, _description) {
     addCommand(_StatusCommand(this));
+    addCommand(_OpenCommand());
+  }
+}
+
+final class _OpenCommand extends Command<void> {
+  _OpenCommand() {
+    argParser.addOption(
+      'repo',
+      abbr: 'r',
+      help: 'The repository to check.',
+      valueHelp: 'owner/repo',
+      defaultsTo: 'flutter/engine',
+    );
+  }
+
+  @protected
+  String get repository => argResults!['repo'] as String;
+
+  @override
+  String get description => 'Open a PRs page in a browser.';
+
+  @override
+  String get name => 'open';
+
+  @override
+  Future<void> run() async {
+    final rest = argResults!.rest;
+    if (rest.isEmpty || rest.length > 1) {
+      io.stderr.writeln('Expected exactly one PR number.');
+      io.exitCode = 1;
+      return;
+    }
+    final number = int.tryParse(rest.single);
+    final url = Uri.https('github.com', '/$repository/pull/$number');
+    io.stdout.writeln('Opening $url...');
+    await io.Process.run('open', [url.toString()]);
   }
 }
 
@@ -150,6 +186,7 @@ final class _StatusCommand extends Command<void> {
     final response = await _runner._github.getJson<_JsonObject>(
       'repos/$repository/commits/$sha/check-runs',
     );
+
     final checks = response.array('check_runs').cast<_JsonObject>();
     final successful = checks.where(
       (c) =>
@@ -167,6 +204,17 @@ final class _StatusCommand extends Command<void> {
         total: checks.length,
       );
     } else if (successful.length == checks.length) {
+      // Check if we're waiting on skia-gold.
+      final skiaGoldPending = await _skiaGoldPending(sha);
+      if (skiaGoldPending != null) {
+        // Determine waiting time.
+        return ChecksPending(
+          skiaGoldPending: true,
+          succeeded: successful.length,
+          total: checks.length + 1,
+          waiting: DateTime.now().difference(skiaGoldPending),
+        );
+      }
       return ChecksPassed();
     } else {
       // Find the earliest check that was started.
@@ -176,13 +224,28 @@ final class _StatusCommand extends Command<void> {
 
       // Calculate the time since the first check was started.
       final duration = DateTime.now().difference(first);
+      final skiaGoldPending = await _skiaGoldPending(sha);
 
       return ChecksPending(
+        skiaGoldPending: skiaGoldPending != null,
         succeeded: successful.length,
-        total: checks.length,
+        total: checks.length + (skiaGoldPending != null ? 1 : 0),
         waiting: duration,
       );
     }
+  }
+
+  Future<DateTime?> _skiaGoldPending(String sha) async {
+    final statuses = await _runner._github.getJson<_JsonArray>(
+      'repos/$repository/statuses/$sha',
+    );
+    final gold = statuses
+        .cast<_JsonObject>()
+        .firstWhereOrNull((s) => s.string('context') == 'flutter-gold');
+    if (gold?.string('state') == 'pending') {
+      return DateTime.parse(gold!.string('updated_at'));
+    }
+    return null;
   }
 
   @override
