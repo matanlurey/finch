@@ -1,53 +1,65 @@
 import 'dart:io' as io;
 
+import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
 import 'package:collection/collection.dart';
+import 'package:finch/src/dev_cache.dart';
 import 'package:finch/src/github/rest_client.dart';
+import 'package:finch/src/json.dart';
+import 'package:finch/src/logger.dart';
 import 'package:finch/src/output.dart';
 import 'package:meta/meta.dart';
 
 const _name = 'finch';
 const _description = 'Opinionated workflow and tooling for hacking on Flutter.';
 
-extension type const _JsonArray._(List<Object?> elements) implements Object {
-  List<T> cast<T>() {
-    return elements.cast<T>();
-  }
-}
-
-extension type const _JsonObject._(Map<String, Object?> fields)
-    implements Object {
-  String string(String key) => any(key);
-  T number<T extends num>(String key) => any(key);
-  int integer(String key) => any(key);
-  double float(String key) => any(key);
-  bool boolean(String key) => any(key);
-  _JsonObject object(String key) => any(key);
-  _JsonArray array(String key) => any(key);
-
-  T any<T extends Object?>(String key) {
-    final value = fields[key];
-    if (value == null && !fields.containsKey(key)) {
-      throw ArgumentError.value(key, 'key', 'Key not found in map.');
-    }
-    if (value is T) {
-      return value;
-    }
-    throw ArgumentError.value(value, 'value', 'Value is not of type $T.');
-  }
-}
-
 final class FinchCommandRunner extends CommandRunner<void> {
-  final RestClient _github;
+  late final Logger _logger;
+
+  late RestClient _github;
 
   FinchCommandRunner(this._github) : super(_name, _description) {
+    addCommand(_DevCommand());
     addCommand(_StatusCommand(this));
-    addCommand(_OpenCommand());
+    addCommand(_OpenCommand(this));
+    argParser
+      ..addFlag(
+        'cache',
+        help: 'Enables a simple development cache of all GET requests.',
+        hide: true,
+      )
+      ..addOption(
+        'verbose',
+        abbr: 'v',
+        help: 'Sets the verbosity level of the logger.',
+        allowed: Verbosity.values.map((v) => v.name),
+        defaultsTo: Verbosity.error.name,
+      );
+  }
+
+  @override
+  Future<void> runCommand(ArgResults topLevelResults) async {
+    _logger = Logger(
+      switch (topLevelResults['verbose'] as String?) {
+        'fatal' || null => Verbosity.fatal,
+        'error' => Verbosity.error,
+        'warning' => Verbosity.warning,
+        'info' || '' => Verbosity.info,
+        'debug' => Verbosity.debug,
+        final unknown => throw FatalError('Unknown verbosity level: $unknown'),
+      },
+    );
+    if (topLevelResults['cache'] as bool) {
+      _github = CachedRestClient(_github);
+    }
+    return super.runCommand(topLevelResults);
   }
 }
 
 final class _OpenCommand extends Command<void> {
-  _OpenCommand() {
+  final FinchCommandRunner _runner;
+
+  _OpenCommand(this._runner) {
     argParser.addOption(
       'repo',
       abbr: 'r',
@@ -69,14 +81,10 @@ final class _OpenCommand extends Command<void> {
   @override
   Future<void> run() async {
     final rest = argResults!.rest;
-    if (rest.isEmpty || rest.length > 1) {
-      io.stderr.writeln('Expected exactly one PR number.');
-      io.exitCode = 1;
-      return;
-    }
+    if (rest.isEmpty || rest.length > 1) {}
     final number = int.tryParse(rest.single);
     final url = Uri.https('github.com', '/$repository/pull/$number');
-    io.stdout.writeln('Opening $url...');
+    _runner._logger.info('Opening $url...');
     await io.Process.run('open', [url.toString()]);
   }
 }
@@ -98,6 +106,11 @@ final class _StatusCommand extends Command<void> {
         abbr: 'u',
         help: 'The user to check. Defaults to the authenticated user.',
         valueHelp: 'user',
+      )
+      ..addFlag(
+        'show-drafts',
+        abbr: 'd',
+        help: 'Show draft PRs.',
       );
   }
 
@@ -107,6 +120,9 @@ final class _StatusCommand extends Command<void> {
   @protected
   String? get user => argResults!['user'] as String?;
 
+  @protected
+  bool get showDrafts => argResults!['show-drafts'] as bool;
+
   @override
   String get description => 'Show the status of open PRs.';
 
@@ -114,7 +130,7 @@ final class _StatusCommand extends Command<void> {
   String get name => 'status';
 
   Future<String> _getAuthenticatedUser() async {
-    final response = await _runner._github.getJson<_JsonObject>('user');
+    final response = await _runner._github.getJson<JsonObject>('user');
     return response.string('login');
   }
 
@@ -122,6 +138,7 @@ final class _StatusCommand extends Command<void> {
     required int number,
     required String title,
     required String url,
+    required bool draft,
   }) async {
     final reviews = await _fetchReviews(number);
     final checks = await _fetchChecks(number);
@@ -131,14 +148,15 @@ final class _StatusCommand extends Command<void> {
       url: Uri.parse(url),
       reviews: reviews,
       checks: checks,
+      isDraft: draft,
     );
   }
 
   Future<PullRequestReviewStatus> _fetchReviews(int pullRequest) async {
-    final response = await _runner._github.getJson<_JsonArray>(
+    final response = await _runner._github.getJson<JsonArray>(
       'repos/$repository/pulls/$pullRequest/reviews',
     );
-    final reviews = response.cast<_JsonObject>();
+    final reviews = response.cast<JsonObject>();
     if (reviews.isEmpty) {
       return ReviewPendingReviewers();
     }
@@ -177,17 +195,17 @@ final class _StatusCommand extends Command<void> {
     // Get the SHA of the latest commit in the pull request.
     final String sha;
     {
-      final response = await _runner._github.getJson<_JsonObject>(
+      final response = await _runner._github.getJson<JsonObject>(
         'repos/$repository/pulls/$number',
       );
       sha = response.object('head').string('sha');
     }
 
-    final response = await _runner._github.getJson<_JsonObject>(
+    final response = await _runner._github.getJson<JsonObject>(
       'repos/$repository/commits/$sha/check-runs',
     );
 
-    final checks = response.array('check_runs').cast<_JsonObject>();
+    final checks = response.array('check_runs').cast<JsonObject>();
     final successful = checks.where(
       (c) =>
           c.string('conclusion') == 'success' ||
@@ -236,11 +254,11 @@ final class _StatusCommand extends Command<void> {
   }
 
   Future<DateTime?> _skiaGoldPending(String sha) async {
-    final statuses = await _runner._github.getJson<_JsonArray>(
+    final statuses = await _runner._github.getJson<JsonArray>(
       'repos/$repository/statuses/$sha',
     );
     final gold = statuses
-        .cast<_JsonObject>()
+        .cast<JsonObject>()
         .firstWhereOrNull((s) => s.string('context') == 'flutter-gold');
     if (gold?.string('state') == 'pending') {
       return DateTime.parse(gold!.string('updated_at'));
@@ -252,10 +270,10 @@ final class _StatusCommand extends Command<void> {
   Future<void> run() async {
     // Check if we need to look up the authenticated user.
     final user = this.user ?? await _getAuthenticatedUser();
-    io.stderr.writeln('Checking open PRs for $user in $repository...');
+    _runner._logger.info('Checking open PRs for $user in $repository...');
 
     // Search for open pull requests.
-    final response = await _runner._github.getJson<_JsonObject>(
+    final response = await _runner._github.getJson<JsonObject>(
       'search/issues',
       {
         'q': [
@@ -267,7 +285,7 @@ final class _StatusCommand extends Command<void> {
         ].join(' '),
       },
     );
-    final items = response.array('items').cast<_JsonObject>();
+    final items = response.array('items').cast<JsonObject>();
     if (items.isEmpty) {
       io.stdout.writeln('No open PRs found.');
       return;
@@ -276,13 +294,21 @@ final class _StatusCommand extends Command<void> {
     // Fetch the status of each pull request.
     final statuses = <PullRequestStatus>[];
     final futures = <Future<void>>[];
+    var draftsHidden = 0;
     for (final item in items) {
       futures.add(
         _fetchStatus(
           number: item.number('number'),
           title: item.string('title'),
           url: item.string('html_url'),
-        ).then(statuses.add),
+          draft: item.boolean('draft'),
+        ).then((status) {
+          if (!showDrafts && status.isDraft) {
+            draftsHidden++;
+            return;
+          }
+          statuses.add(status);
+        }),
       );
     }
 
@@ -292,6 +318,44 @@ final class _StatusCommand extends Command<void> {
     // Print the status of each pull request.
     for (final status in statuses) {
       io.stdout.writeln('\n$status');
+    }
+
+    if (draftsHidden > 0) {
+      _runner._logger.info(
+        '\n'
+        'TIP: $draftsHidden draft PRs hidden. Use --show-drafts',
+      );
+    }
+  }
+}
+
+final class _DevCommand extends Command<void> {
+  _DevCommand() {
+    addSubcommand(_DevCacheClearCommand());
+  }
+
+  @override
+  bool get hidden => true;
+
+  @override
+  String get description => 'Subcommands for development tasks.';
+
+  @override
+  String get name => 'dev';
+}
+
+final class _DevCacheClearCommand extends Command<void> {
+  @override
+  String get description => 'Clear the development cache.';
+
+  @override
+  String get name => 'cache-clear';
+
+  @override
+  Future<void> run() async {
+    final cacheDir = io.Directory('.dart_tool/finch/cache');
+    if (cacheDir.existsSync()) {
+      cacheDir.deleteSync(recursive: true);
     }
   }
 }

@@ -15,7 +15,7 @@ import 'package:http/http.dart' as http;
 /// The [close] method should be called when the client is no longer needed, to
 /// ensure that the underlying HTTP client is closed and its resources are
 /// released, otherwise the application may hang.
-final class RestClient {
+interface class RestClient {
   final Uri _baseUrl;
   final http.Client _http;
   final Map<String, String> _headers;

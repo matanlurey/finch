@@ -19,12 +19,16 @@ final class PullRequestStatus {
   /// The status of the pull request checks.
   final PullRequestCheckStatus checks;
 
+  /// Whether the pull request is a draft.
+  final bool isDraft;
+
   const PullRequestStatus({
     required this.number,
     required this.title,
     required this.url,
     required this.reviews,
     required this.checks,
+    required this.isDraft,
   });
 
   @override
@@ -34,7 +38,8 @@ final class PullRequestStatus {
         other.title == title &&
         other.url == url &&
         other.reviews == reviews &&
-        other.checks == checks;
+        other.checks == checks &&
+        other.isDraft == isDraft;
   }
 
   @override
@@ -193,20 +198,6 @@ final class ChecksPending extends PullRequestCheckStatus {
   });
 
   @override
-  bool operator ==(Object other) {
-    return other is ChecksPending &&
-        other.succeeded == succeeded &&
-        other.total == total &&
-        other.waiting == waiting &&
-        other.skiaGoldPending == skiaGoldPending;
-  }
-
-  @override
-  int get hashCode {
-    return Object.hash(succeeded, total, waiting, skiaGoldPending);
-  }
-
-  @override
   String toString() {
     return '🟡 waiting for ${total - succeeded}/$total checks ${skiaGoldPending ? '(including skia gold)' : ''} (${waiting.toHumanReadable()})';
   }
@@ -215,16 +206,6 @@ final class ChecksPending extends PullRequestCheckStatus {
 /// Checks have passed.
 final class ChecksPassed extends PullRequestCheckStatus {
   const ChecksPassed();
-
-  @override
-  bool operator ==(Object other) {
-    return other is ChecksPassed;
-  }
-
-  @override
-  int get hashCode {
-    return (ChecksPassed).hashCode;
-  }
 
   @override
   String toString() {
@@ -244,18 +225,6 @@ final class ChecksFailed extends PullRequestCheckStatus {
     required this.failed,
     required this.total,
   });
-
-  @override
-  bool operator ==(Object other) {
-    return other is ChecksFailed &&
-        other.failed == failed &&
-        other.total == total;
-  }
-
-  @override
-  int get hashCode {
-    return Object.hash(failed, total);
-  }
 
   @override
   String toString() {

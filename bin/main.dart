@@ -1,5 +1,6 @@
 import 'dart:io' as io;
 
+import 'package:args/command_runner.dart';
 import 'package:finch/src/command_runner.dart';
 import 'package:finch/src/github/rest_client.dart';
 import 'package:http/http.dart';
@@ -25,8 +26,14 @@ void main(List<String> args) async {
 
   try {
     await FinchCommandRunner(client).run(args);
-  } on ClientException catch (e, s) {
-    io.stderr.writeln('Error: ${e.message}');
+  } on ClientException catch (e) {
+    io.stderr.writeln('Failed to fetch from ${e.uri}');
+    io.exitCode = 1;
+  } on UsageException catch (e) {
+    io.stderr.writeln(e.usage);
+    io.exitCode = 64;
+  } on Exception catch (e, s) {
+    io.stderr.writeln('Unhandled ${e.runtimeType}: $e');
     io.stderr.writeln('Stack trace:\n${Trace.from(s).terse}');
     io.exitCode = 1;
   } finally {

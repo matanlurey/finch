@@ -1,3 +1,34 @@
 #!/bin/bash
 
-dart bin/main.dart "$@"
+set -e
+
+# Support an interactive mode if no arguments are provided.
+#
+# 1. Each new line is a separate execution.
+# 2. A blank line repeats the last command.
+# 3. A line with the word "exit" exits the interactive mode.
+if [ $# -eq 0 ]; then
+  echo "Welcome to the finch interactive mode."
+  echo "Each new line is treated as a separate execution, i.e. \"status\"".
+  echo "Type 'exit' to quit."
+  last_line="status"
+  while true; do
+    read -p "finch> " line
+    if [ -z "$line" ]; then
+      line="$last_line"
+    fi
+    if [ "$line" = "exit" ]; then
+      break
+    fi
+    eval "set -- $line"
+    echo "finch> dart bin/main.dart --verbose info --cache $line"
+    dart bin/main.dart --verbose info --cache "$@"
+    last_line="$line"
+  done
+  exit 0
+fi
+
+dart bin/main.dart \
+  --verbose info \
+  --cache \
+  "$@"
