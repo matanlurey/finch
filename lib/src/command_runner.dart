@@ -208,12 +208,12 @@ final class _StatusCommand extends Command<void> {
     final checks = response.array('check_runs').cast<JsonObject>();
     final successful = checks.where(
       (c) =>
-          c.string('conclusion') == 'success' ||
-          c.string('conclusion') == 'neutral' ||
-          c.string('conclusion') == 'skipped',
+          c.any('conclusion') == 'success' ||
+          c.any('conclusion') == 'neutral' ||
+          c.any('conclusion') == 'skipped',
     );
     final failed = checks.where(
-      (c) => c.string('conclusion') == 'failure',
+      (c) => c.any('conclusion') == 'failure',
     );
 
     if (failed.isNotEmpty) {
