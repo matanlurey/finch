@@ -139,8 +139,9 @@ final class _StatusCommand extends Command<void> {
     required String title,
     required String url,
     required bool draft,
+    required DateTime lastUpdated,
   }) async {
-    final reviews = await _fetchReviews(number);
+    final reviews = await _fetchReviews(number, lastUpdated);
     final checks = await _fetchChecks(number);
     return PullRequestStatus(
       number: number,
@@ -152,12 +153,17 @@ final class _StatusCommand extends Command<void> {
     );
   }
 
-  Future<PullRequestReviewStatus> _fetchReviews(int pullRequest) async {
+  Future<PullRequestReviewStatus> _fetchReviews(
+      int pullRequest, DateTime lastUpdated) async {
     final response = await _runner._github.getJson<JsonArray>(
       'repos/$repository/pulls/$pullRequest/reviews',
     );
+    final requested = await _runner._github.getJson<JsonObject>(
+      'repos/$repository/pulls/$pullRequest/requested_reviewers',
+    );
     final reviews = response.cast<JsonObject>();
-    if (reviews.isEmpty) {
+    final requestedReviewers = requested.array('users').cast<JsonObject>();
+    if (reviews.isEmpty && requestedReviewers.isEmpty) {
       return ReviewPendingReviewers();
     }
     final lgtm = reviews.where(
@@ -173,20 +179,15 @@ final class _StatusCommand extends Command<void> {
     } else if (lgtm.isNotEmpty) {
       return ReviewApproved(
         approved: lgtm.length,
-        total: reviews.length,
+        total: lgtm.length + requestedReviewers.length,
       );
     } else {
-      // Find the earliest requested review.
-      final first = reviews
-          .map((r) => DateTime.parse(r.string('submitted_at')))
-          .reduce((a, b) => a.isBefore(b) ? a : b);
-
-      // Calculate the time since the earliest review was requested.
-      final elapsed = DateTime.now().difference(first);
-
+      // Use the last update time for the PR as the time we started waiting,
+      // as there is no other good time to use (requested reviews do not include
+      // a timestamp).
       return ReviewPendingReview(
-        assigned: reviews.length,
-        waiting: elapsed,
+        assigned: requestedReviewers.length,
+        waiting: DateTime.now().difference(lastUpdated),
       );
     }
   }
@@ -302,6 +303,7 @@ final class _StatusCommand extends Command<void> {
           title: item.string('title'),
           url: item.string('html_url'),
           draft: item.boolean('draft'),
+          lastUpdated: DateTime.parse(item.string('updated_at')),
         ).then((status) {
           if (!showDrafts && status.isDraft) {
             draftsHidden++;
