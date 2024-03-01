@@ -1,6 +1,7 @@
 import 'dart:convert';
 
-import 'package:finch/src/github/rest_client.dart';
+import 'package:finch/src/github.dart';
+import 'package:finch/src/utils/sound_json.dart';
 import 'package:http/http.dart' as http;
 import 'package:test/test.dart';
 
@@ -25,7 +26,7 @@ void main() {
     );
 
     expect(
-      await rest.getJson<Map<String, Object?>>('/user'),
+      await rest.getJson<JsonObject>('/user'),
       {'login': 'octocat'},
     );
 

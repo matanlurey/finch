@@ -2,7 +2,7 @@ import 'dart:io' as io;
 
 import 'package:args/command_runner.dart';
 import 'package:finch/src/command_runner.dart';
-import 'package:finch/src/github/rest_client.dart';
+import 'package:finch/src/github.dart';
 import 'package:http/http.dart';
 import 'package:stack_trace/stack_trace.dart';
 

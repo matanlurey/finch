@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:finch/src/utils/sound_json.dart';
 import 'package:http/http.dart' as http;
 
 /// A REST client for accessing the GitHub API.
@@ -57,7 +58,7 @@ interface class RestClient {
   /// ## Errors
   ///
   /// - Throws [http.ClientException] if the request fails.
-  Future<T> getJson<T extends Object?>(
+  Future<T> getJson<T extends JsonValue?>(
     String path, [
     Map<String, String>? query,
   ]) async {

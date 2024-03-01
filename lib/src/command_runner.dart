@@ -5,9 +5,9 @@ import 'package:args/command_runner.dart';
 import 'package:collection/collection.dart';
 import 'package:finch/src/dev_cache.dart';
 import 'package:finch/src/github/rest_client.dart';
-import 'package:finch/src/json.dart';
 import 'package:finch/src/logger.dart';
 import 'package:finch/src/output.dart';
+import 'package:finch/src/utils/sound_json.dart';
 import 'package:meta/meta.dart';
 
 const _name = 'finch';
@@ -154,7 +154,9 @@ final class _StatusCommand extends Command<void> {
   }
 
   Future<PullRequestReviewStatus> _fetchReviews(
-      int pullRequest, DateTime lastUpdated) async {
+    int pullRequest,
+    DateTime lastUpdated,
+  ) async {
     final response = await _runner._github.getJson<JsonArray>(
       'repos/$repository/pulls/$pullRequest/reviews',
     );
@@ -209,12 +211,12 @@ final class _StatusCommand extends Command<void> {
     final checks = response.array('check_runs').cast<JsonObject>();
     final successful = checks.where(
       (c) =>
-          c.any('conclusion') == 'success' ||
-          c.any('conclusion') == 'neutral' ||
-          c.any('conclusion') == 'skipped',
+          c.get('conclusion') == JsonString('success') ||
+          c.get('conclusion') == JsonString('neutral') ||
+          c.get('conclusion') == JsonString('skipped'),
     );
     final failed = checks.where(
-      (c) => c.any('conclusion') == 'failure',
+      (c) => c.get('conclusion') == JsonString('failure'),
     );
 
     if (failed.isNotEmpty) {
@@ -299,7 +301,7 @@ final class _StatusCommand extends Command<void> {
     for (final item in items) {
       futures.add(
         _fetchStatus(
-          number: item.number('number'),
+          number: item.number('number').toInt(),
           title: item.string('title'),
           url: item.string('html_url'),
           draft: item.boolean('draft'),

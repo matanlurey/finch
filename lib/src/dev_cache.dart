@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io' as io;
 
-import 'package:finch/src/github/rest_client.dart';
+import 'package:finch/src/github.dart';
+import 'package:finch/src/utils/sound_json.dart';
 import 'package:path/path.dart' as p;
 
 final class CachedRestClient implements RestClient {
@@ -28,7 +29,7 @@ final class CachedRestClient implements RestClient {
   }
 
   @override
-  Future<T> getJson<T extends Object?>(
+  Future<T> getJson<T extends JsonValue?>(
     String path, [
     Map<String, String>? query,
   ]) async {

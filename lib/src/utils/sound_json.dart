@@ -48,16 +48,6 @@ extension type const JsonValue._(Object _value) implements Object {
     }
     return null;
   }
-
-  /// Casts the value to a known JSON type.
-  ///
-  /// A [TypeError] is thrown if the value is not of the expected type.
-  T as<T extends JsonValue?>() => _value as T;
-
-  /// Tries to cast the value to a known JSON type.
-  ///
-  /// Returns `null` if the value is not of the expected type.
-  T? tryAs<T extends JsonValue>() => _value is T ? _value : null;
 }
 
 /// A known JSON string.
@@ -135,6 +125,42 @@ extension type const JsonObject(Map<String, JsonValue?> _fields)
   static JsonObject? tryParse(String source) {
     return JsonValue.tryParse(source);
   }
+
+  /// Returns the value of the field with the given [key].
+  ///
+  /// Throws an error if the field is missing.
+  T get<T extends JsonValue?>(String key) {
+    final value = this[key];
+    if (value == null && !containsKey(key)) {
+      throw StateError('Field "$key" is missing');
+    }
+    return value as T;
+  }
+
+  /// Returns the string value of the field with the given [key].
+  ///
+  /// Throws an error if the field is not a string.
+  JsonString string(String key) => get(key);
+
+  /// Returns the number value of the field with the given [key].
+  ///
+  /// Throws an error if the field is not a number.
+  JsonNumber number(String key) => get(key);
+
+  /// Returns the boolean value of the field with the given [key].
+  ///
+  /// Throws an error if the field is not a boolean.
+  JsonBoolean boolean(String key) => get(key);
+
+  /// Returns the object value of the field with the given [key].
+  ///
+  /// Throws an error if the field is not an object.
+  JsonObject object(String key) => get(key);
+
+  /// Returns the array value of the field with the given [key].
+  ///
+  /// Throws an error if the field is not an array.
+  JsonArray<T> array<T extends JsonValue?>(String key) => get(key);
 }
 
 /// A known JSON array.
